@@ -1,0 +1,191 @@
+/* =========================================
+   1. Global Variables & Base Theme
+   ========================================= */
+:root {
+    /* Colors */
+    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    --dark-bg: #0f172a;
+    --card-bg: #1e293b;
+    --border-color: #334155;
+    --accent-glow: rgba(102, 126, 234, 0.2);
+    --text-primary: #ffffff;
+    --text-secondary: #94a3b8;
+    
+    /* Effects */
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.35);
+    --blur-effect: blur(12px);
+}
+
+/* Base App Background */
+.stApp {
+    background: linear-gradient(135deg, var(--dark-bg) 0%, #1a1f2e 100%);
+}
+
+.main .block-container {
+    padding: 2rem 1rem 3rem;
+    max-width: 1200px;
+}
+
+/* =========================================
+   2. Typography & Headers (Unified)
+   ========================================= */
+.main-header {
+    font-size: 3rem;
+    font-weight: 800;
+    background: var(--primary-gradient);
+    background-size: 200% 200%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-align: center;
+    letter-spacing: -1.5px;
+    animation: gradientShift 4s ease infinite;
+    margin-bottom: 0.5rem;
+}
+
+.sub-header {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+    font-weight: 300;
+    margin-bottom: 3rem;
+}
+
+@keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
+/* =========================================
+   3. Chat Interface & Messages
+   ========================================= */
+/* Chat Message Container */
+[data-testid="stChatMessage"] {
+    background: var(--card-bg) !important;
+    backdrop-filter: var(--blur-effect);
+    border: 1px solid var(--border-color) !important;
+    border-radius: 16px !important;
+    padding: 1.25rem !important;
+    margin-bottom: 1.25rem !important;
+    transition: transform 0.3s ease, border-color 0.3s ease;
+}
+
+[data-testid="stChatMessage"]:hover {
+    border-color: #667eea !important;
+    transform: translateX(4px);
+}
+
+/* Highlight AI vs User */
+[data-testid="chat-message-assistant"] {
+    border-left: 4px solid #667eea !important;
+}
+
+[data-testid="chat-message-user"] {
+    background: rgba(102, 126, 234, 0.1) !important;
+}
+
+/* Avatars Style */
+[data-testid="stChatMessageAvatar"] {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 10px !important;
+}
+
+/* Chat Input Bar */
+.stChatInput {
+    padding: 1.5rem 0 40px !important;
+}
+
+[data-testid="stChatInput"] > div {
+    background: var(--card-bg) !important;
+    border: 1.5px solid var(--border-color) !important;
+    border-radius: 16px !important;
+    box-shadow: var(--shadow-lg);
+}
+
+/* =========================================
+   4. Buttons & Interactive Elements
+   ========================================= */
+/* Primary Action Buttons */
+.stButton button[kind="primary"] {
+    background: var(--primary-gradient) !important;
+    border: none !important;
+    border-radius: 12px !important;
+    padding: 0.75rem 1.5rem !important;
+    font-weight: 600 !important;
+    color: white !important;
+}
+
+/* Quick Question / Secondary Buttons */
+button[data-testid="baseButton-secondary"] {
+    background: var(--card-bg) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 12px !important;
+    transition: all 0.3s ease !important;
+}
+
+button[data-testid="baseButton-secondary"]:hover {
+    border-color: #667eea !important;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+/* Plus (+) Popover Button */
+div[data-testid="stPopover"] > button {
+    border-radius: 50% !important;
+    width: 40px !important;
+    height: 40px !important;
+    background-color: #2b2c2f !important;
+}
+
+/* =========================================
+   5. Sidebar, Metrics & Elements
+   ========================================= */
+[data-testid="stSidebar"] {
+    background: #0f172a !important;
+    border-right: 1px solid var(--border-color) !important;
+}
+
+.stMetric {
+    background: var(--card-bg) !important;
+    padding: 1rem !important;
+    border-radius: 12px !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+.stMetric [data-testid="stMetricValue"] {
+    color: #667eea !important;
+    font-weight: 700;
+}
+
+/* =========================================
+   6. Code, Alerts & Scrollbar
+   ========================================= */
+code {
+    background: rgba(245, 158, 11, 0.1) !important;
+    color: #f59e0b !important;
+    padding: 0.2rem 0.4rem !important;
+    border-radius: 4px !important;
+}
+
+pre {
+    background: #0b0f1a !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 12px !important;
+    padding: 1rem !important;
+}
+
+.stSuccess { background: rgba(16, 185, 129, 0.1) !important; border-left: 4px solid #10b981 !important; }
+.stInfo { background: rgba(102, 126, 234, 0.1) !important; border-left: 4px solid #667eea !important; }
+.stError { background: rgba(239, 68, 68, 0.1) !important; border-left: 4px solid #ef4444 !important; }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--dark-bg); }
+::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: #667eea; }
