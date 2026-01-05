@@ -1,46 +1,68 @@
-/* ========================================
-   1. Sidebar (Nav) - คงความเข้มขรึมไว้
-   ======================================== */
+/* ล้างค่าเก่าและกำหนดพื้นหลังหลัก */
+[data-testid="stAppViewContainer"] {
+    background-color: #f0f2f6 !important;
+}
+
+/* แก้ไข Sidebar ให้สีเข้มตัดกับปุ่ม */
 [data-testid="stSidebar"] {
+    background-color: #0e1117 !important;
+}
+
+/* ปรับแต่ง Message Bubble ใหม่ให้สีตัวอักษรชัดเจน */
+[data-testid="stChatMessage"] {
+    background-color: #f7f9fc !important; /* สีเทาฟ้าอ่อนๆ */
+    border-radius: 15px !important;
+    margin-bottom: 15px !important;
+    padding: 20px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+}
+
+/* ข้อความฝั่ง User: พื้นหลังขาว ตัวหนังสือดำเข้ม */
+[data-testid="stChatMessage"]:nth-child(odd) {
+    background-color: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+    color: #1f2937 !important;
+}
+
+/* ข้อความฝั่ง AI: พื้นหลังสีอ่อนตัดด้วยขอบฟ้า ตัวหนังสือดำเข้ม */
+[data-testid="stChatMessage"]:nth-child(even) {
+    background-color: #eef2ff !important;
+    border: 1px solid #c7d2fe !important;
+    color: #1f2937 !important;
+}
+
+/* บังคับให้สีฟอนต์ใน Markdown เป็นสีดำเข้มทั้งหมดเพื่อกันฟอนต์จาง */
+[data-testid="stChatMessage"] .stMarkdown p, 
+[data-testid="stChatMessage"] .stMarkdown li {
+    color: #111827 !important;
+    font-size: 1rem !important;
+    line-height: 1.6 !important;
+}
+
+/* ปรับแต่งช่อง Input ด้านล่างให้เด่นชัด */
+[data-testid="stChatInput"] {
+    background-color: #ffffff !important;
+    border: 2px solid #3b82f6 !important;
+    border-radius: 12px !important;
+}
+
+/* ปรับแต่งปุ่มใน Sidebar ให้มองเห็นง่ายขึ้น */
+button[kind="secondary"] {
     background-color: #262730 !important;
+    color: white !important;
+    border: 1px solid #4b5563 !important;
 }
 
-[data-testid="stSidebar"] * {
-    color: #ffffff !important; /* ใน Sidebar ยังคงต้องขาวเพื่อให้อ่านออก */
+button[kind="secondary"]:hover {
+    border-color: #3b82f6 !important;
+    color: #3b82f6 !important;
 }
 
-/* ========================================
-   2. Main Content - กำจัดสีขาวและสีจางทุกจุด
-   ======================================== */
+.main {
+    background-color: #ffffff;
+}
+
 .stApp {
     background-color: #ffffff !important;
-}
-
-/* บังคับตัวอักษรทุกชนิดในหน้าหลักให้เป็นสีดำสนิท 100% */
-.main, .main div, .main p, .main span, .main h1, .main h2, .main h3, .main h4, .main li, .main label {
-    color: #000000 !important;
-    -webkit-text-fill-color: #000000 !important;
-}
-
-/* ปรับความกว้างให้ดูโปร่งขึ้น */
-.block-container {
-    max-width: 1100px !important;
-}
-/* ========================================
-   4. Input Area (ช่องพิมพ์ด้านล่าง)
-   ======================================== */
-.stChatInputContainer {
-    background-color: #ffffff !important;
-    padding-bottom: 15px !important;
-}
-
-.stChatInput textarea {
-    color: #000000 !important;
-    border: 1px solid #ff8c00 !important;
-}
-
-/* แก้ไขหัวข้อ "AI Warehouse Assistant" ให้ดำสนิทไม่เป็นไฮไลท์ขาว */
-h1 {
-    color: #000000 !important;
-    font-weight: 800 !important;
+    color: #1e1e1e !important;
 }
