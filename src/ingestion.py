@@ -1,12 +1,13 @@
 import os
+import gc
 import pandas as pd
+from typing import List, Dict, Optional
 from dotenv import load_dotenv
+
 from langchain_core.documents import Document
 from langchain_ollama import OllamaEmbeddings
 from langchain_community.vectorstores import PGVector
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from typing import List, Dict
-import re
 
 load_dotenv()
 
@@ -15,286 +16,299 @@ load_dotenv()
 # ============================================================================
 DB_URL = f"postgresql+psycopg2://{os.getenv('PG_USER')}:{os.getenv('PG_PASSWORD')}@{os.getenv('PG_HOST')}:{os.getenv('PG_PORT')}/{os.getenv('PG_DATABASE')}"
 COLLECTION = os.getenv("COLLECTION_NAME")
-EMBED_MODEL = "mxbai-embed-large"
+EMBED_MODEL = "nomic-embed-text"
 OLLAMA_BASE_URL = "http://localhost:11434"
 
-# ============================================================================
-# Utility Functions
-# ============================================================================
-def clean_text(value):
-    """ล้างข้อมูลขยะโดยยังรักษา Serial Number ไว้"""
-    if pd.isna(value) or value is None:
-        return None
-    
-    val = str(value).strip()
-    useless = ['nan', 'none', 'null', 'n/a', '', 'ไม่มี', 'ไม่มีข้อมูล']
-    junk_patterns = ['dtype: object', 'dtype: int64', 'Name:', 'Unnamed:']
-    
-    if val.lower() in useless:
-        return None
-    
-    for pattern in junk_patterns:
-        val = val.replace(pattern, '')
-        
-    return val.strip() or None
+EXCEL_FILE = "data/data_inventory.xlsx"
 
-def extract_searchable_codes(row_dict: Dict) -> List[str]:
-    """ดึงรหัสที่สำคัญออกมาเพื่อใช้ในการค้นหา"""
-    codes = []
-    priority_fields = ['serial', 's/n', 'sn', 'model', 'part', 'asset', 'code']
+# ⚠️ แก้ชื่อ sheet ให้ตรงกับไฟล์ Excel ของคุณ
+TARGET_SHEETS = [
+    ("Spare", "อะไหล่สำรอง"),
+    ("Obsolete", "สินค้าเลิกใช้งาน/เสื่อมสภาพ"),
+]
+
+# หรือถ้าชื่อ sheet ต่างกัน ให้เปลี่ยนเป็น:
+# TARGET_SHEETS = [
+#     ("ชื่อ Sheet 1 จริง", "Label ที่ต้องการ 1"),
+#     ("ชื่อ Sheet 2 จริง", "Label ที่ต้องการ 2"),
+# ]
+
+# ============================================================================
+# TEXT CLEANING
+# ============================================================================
+USELESS_VALUES = {
+    "nan", "none", "null", "n/a", "", "-", "ไม่มี", "ไม่มีข้อมูล"
+}
+
+def clean_text(value: Optional[str]) -> Optional[str]:
+    if value is None or pd.isna(value):
+        return None
     
-    for col, val in row_dict.items():
-        col_lower = str(col).lower()
-        
-        # เช็คว่าเป็น field ที่เก็บรหัสหรือไม่
-        if any(pf in col_lower for pf in priority_fields):
+    text = str(value).strip()
+    if text.lower() in USELESS_VALUES or text == "-":
+        return None
+    
+    return text
+
+# ============================================================================
+# IMPROVED CONTENT BUILDER (สร้าง Context ที่ดีกว่า)
+# ============================================================================
+def build_rich_content(row: Dict, label: str) -> str:
+    """สร้าง content ที่ rich และค้นหาง่ายขึ้น"""
+    
+    parts = []
+    parts.append(f"ประเภท: {label}")
+    parts.append("")
+    
+    # ดึงข้อมูลสำคัญ
+    model = clean_text(row.get('Model'))
+    model_no = clean_text(row.get('Model No.'))
+    model_name = clean_text(row.get('Model Name'))
+    serial = clean_text(row.get('Serial'))
+    location = clean_text(row.get('Locations'))
+    status = clean_text(row.get('Status'))
+    asset_no = clean_text(row.get('Asset No'))
+    lifetime = clean_text(row.get('Lifetime'))
+    purchaser = clean_text(row.get('Purchaser'))
+    order_number = clean_text(row.get('Order Number'))
+    
+    # สร้างหัวข้อหลัก - ใช้คำที่ค้นหาได้หลายแบบ
+    if model:
+        parts.append(f"สินค้า: {model}")
+        parts.append(f"Model: {model}")
+        parts.append(f"รุ่น: {model}")
+        # เพิ่มการค้นหาแบบไม่มีช่องว่าง
+        model_compact = model.replace(" ", "")
+        parts.append(f"รหัสสินค้า: {model_compact}")
+    
+    if model_no:
+        parts.append(f"Model Number: {model_no}")
+        parts.append(f"หมายเลขรุ่น: {model_no}")
+        parts.append(f"รหัสรุ่น: {model_no}")
+    
+    if model_name:
+        parts.append(f"ชื่อรุ่น: {model_name}")
+    
+    parts.append("")
+    parts.append("## ข้อมูลระบุตัวตน")
+    
+    if serial:
+        parts.append(f"Serial Number: {serial}")
+        parts.append(f"S/N: {serial}")
+        parts.append(f"หมายเลขซีเรียล: {serial}")
+        parts.append(f"ซีเรียลนัมเบอร์: {serial}")
+    
+    if asset_no:
+        parts.append(f"Asset Number: {asset_no}")
+        parts.append(f"Asset No: {asset_no}")
+        parts.append(f"หมายเลขทรัพย์สิน: {asset_no}")
+        parts.append(f"รหัสทรัพย์สิน: {asset_no}")
+    
+    parts.append("")
+    parts.append("## ตำแหน่งและสถานะ")
+    
+    if location:
+        parts.append(f"ตำแหน่ง: {location}")
+        parts.append(f"Location: {location}")
+        parts.append(f"อยู่ที่: {location}")
+        parts.append(f"สถานที่: {location}")
+    
+    if status:
+        parts.append(f"สถานะ: {status}")
+        parts.append(f"Status: {status}")
+    
+    if lifetime:
+        parts.append(f"อายุการใช้งาน: {lifetime}")
+        parts.append(f"Lifetime: {lifetime}")
+    
+    parts.append("")
+    parts.append("## ข้อมูลการจัดซื้อ")
+    
+    if purchaser:
+        parts.append(f"ผู้จัดซื้อ: {purchaser}")
+        parts.append(f"Purchaser: {purchaser}")
+    
+    if order_number:
+        parts.append(f"เลขที่ใบสั่งซื้อ: {order_number}")
+        parts.append(f"Order Number: {order_number}")
+    
+    # เพิ่มข้อมูลอื่นๆ ที่เหลือ
+    parts.append("")
+    parts.append("## รายละเอียดเพิ่มเติม")
+    
+    important_cols = ['Model', 'Model No.', 'Model Name', 'Serial', 'Status', 
+                      'Lifetime', 'Purchaser', 'Order Number', 'Asset No', 'Locations']
+    
+    for col, val in row.items():
+        if col not in important_cols:
             clean_val = clean_text(val)
             if clean_val:
-                # ดึงรหัสด้วย regex
-                found_codes = re.findall(r'[A-Z0-9]+-[A-Z0-9-/]+|[A-Z]*\d{5,}', str(clean_val).upper())
-                codes.extend(found_codes)
+                parts.append(f"{col}: {clean_val}")
     
-    return list(set(codes))  # ลบ duplicate
-
-def create_content_body(row_dict: Dict, label: str) -> str:
-    """จัดโครงสร้างเนื้อหาแบบมีลำดับความสำคัญ"""
-    groups = {
-        "Identification": [], 
-        "Location": [],      
-        "Responsibility": [], 
-        "Status": [],        
-        "Technical": [],
-        "Others": []
-    }
+    # เพิ่มส่วนสรุปสำหรับการค้นหา
+    parts.append("")
+    parts.append("## Context Hint")
+    search_terms = []
+    if model:
+        search_terms.append(model)
+        search_terms.append(model.replace(" ", ""))
+    if serial:
+        search_terms.append(f"Serial {serial}")
+    if asset_no:
+        search_terms.append(f"Asset {asset_no}")
+    if location:
+        search_terms.append(f"ที่ {location}")
     
-    keywords = {
-        "Identification": ['serial', 's/n', 'sn', 'part', 'model', 'รหัส', 'หมายเลข', 'code', 'name', 'asset', 'item'],
-        "Location": ['location', 'ตำแหน่ง', 'สถานที่', 'โซน', 'shelf', 'zone', 'room', 'building', 'อาคาร'],
-        "Responsibility": ['responsible', 'owner', 'ผู้รับผิดชอบ', 'เจ้าของ', 'person', 'user', 'department'],
-        "Status": ['status', 'สถานะ', 'condition', 'state', 'available'],
-        "Technical": ['spec', 'description', 'รายละเอียด', 'คุณสมบัติ', 'brand', 'manufacturer']
-    }
+    parts.append("คำค้นหาที่เกี่ยวข้อง: " + " | ".join(search_terms))
+    
+    return "\n".join(parts)
 
-    for col, raw_val in row_dict.items():
-        val = clean_text(raw_val)
-        if not val: 
+# ============================================================================
+# EXCEL → DOCUMENT GENERATOR
+# ============================================================================
+def load_documents_from_sheet(
+    file_path: str,
+    sheet_name: str,
+    label: str,
+) -> List[Document]:
+    
+    print(f"  กำลังโหลด sheet: {sheet_name}")
+    
+    df = pd.read_excel(
+        file_path,
+        sheet_name=sheet_name,
+        dtype=str,
+    ).dropna(how="all")
+    
+    # ลบแถวที่ซ้ำกัน
+    df = df.drop_duplicates()
+    
+    # ทำความสะอาดชื่อคอลัมน์
+    df.columns = [str(c).strip() for c in df.columns]
+    
+    print(f"  พบข้อมูล {len(df)} แถว")
+    
+    documents: List[Document] = []
+    
+    for idx, row in df.iterrows():
+        data = row.to_dict()
+        content = build_rich_content(data, label)
+        
+        # ต้องมีเนื้อหาอย่างน้อย 30 ตัวอักษร
+        if len(content) < 30:
             continue
         
-        line = f"{col}: {val}"
-        found = False
+        # สร้าง metadata ที่มีประโยชน์
+        metadata = {
+            "sheet": sheet_name,
+            "category": label,
+            "row": int(idx),
+            "model": clean_text(data.get('Model', '')),
+            "serial": clean_text(data.get('Serial', '')),
+            "location": clean_text(data.get('Locations', '')),
+        }
         
-        for group, keys in keywords.items():
-            if any(k in str(col).lower() for k in keys):
-                groups[group].append(line)
-                found = True
-                break
+        # ลบ None ออกจาก metadata
+        metadata = {k: v for k, v in metadata.items() if v is not None}
         
-        if not found: 
-            groups["Others"].append(line)
-
-    # สร้างเนื้อหาตามลำดับความสำคัญ
-    sections = [f"=== Category: {label} ==="]
+        documents.append(
+            Document(
+                page_content=content,
+                metadata=metadata,
+            )
+        )
     
-    titles = {
-        "Identification": "## รหัสและชื่อสินค้า", 
-        "Location": "## ตำแหน่งและสถานที่", 
-        "Responsibility": "## ผู้รับผิดชอบ", 
-        "Status": "## สถานะ", 
-        "Technical": "## รายละเอียดทางเทคนิค",
-        "Others": "## ข้อมูลเพิ่มเติม"
-    }
+    print(f"  สร้างได้ {len(documents)} documents")
     
-    for key, title in titles.items():
-        if groups[key]:
-            sections.extend([f"\n{title}", *groups[key]])
+    del df
+    gc.collect()
     
-    # เพิ่มรหัสที่สำคัญไว้ท้ายสุด เพื่อเพิ่มโอกาสค้นเจอ
-    searchable_codes = extract_searchable_codes(row_dict)
-    if searchable_codes:
-        sections.append(f"\n## Searchable Codes: {', '.join(searchable_codes)}")
-    
-    return "\n".join(sections)
-
-def process_sheet(file: str, sheet: str, label: str) -> List[Document]:
-    """ประมวลผล Sheet และแปลงเป็น Documents"""
-    try:
-        df = pd.read_excel(file, sheet_name=sheet)
-        
-        # ทำความสะอาดข้อมูล
-        df = df.dropna(how='all').drop_duplicates()
-        df.columns = [str(c).strip() for c in df.columns]
-        
-        print(f"📋 Processing sheet: {sheet}")
-        print(f"   - Total rows: {len(df)}")
-        print(f"   - Columns: {list(df.columns)}")
-        
-        docs = []
-        skipped = 0
-        
-        for idx, row in df.iterrows():
-            data = row.to_dict()
-            content = create_content_body(data, label)
-            
-            # ตรวจสอบว่ามีเนื้อหาเพียงพอหรือไม่
-            if len(content) < 30: 
-                skipped += 1
-                continue
-            
-            # สร้าง metadata ที่สะอาด
-            meta = {}
-            for k, v in data.items():
-                clean_v = clean_text(v)
-                if clean_v:
-                    meta[k.lower().replace(' ', '_')] = clean_v
-            
-            meta.update({
-                "sheet": sheet, 
-                "category": label, 
-                "row_index": int(idx)
-            })
-            
-            docs.append(Document(page_content=content, metadata=meta))
-        
-        print(f"   ✅ Created: {len(docs)} documents")
-        print(f"   ⚠️ Skipped: {skipped} rows (insufficient data)")
-        
-        return docs
-        
-    except Exception as e:
-        print(f"❌ Error processing {sheet}: {e}")
-        import traceback
-        traceback.print_exc()
-        return []
-
-def verify_documents(docs: List[Document]):
-    """ตรวจสอบคุณภาพของเอกสารก่อนนำเข้า"""
-    print("\n🔍 Verifying Documents Quality...")
-    
-    if not docs:
-        print("❌ No documents to verify!")
-        return False
-    
-    # ตรวจสอบตัวอย่างเอกสาร
-    sample = docs[0]
-    print(f"\n📄 Sample Document:")
-    print(f"Content preview: {sample.page_content[:200]}...")
-    print(f"Metadata: {sample.metadata}")
-    
-    # ตรวจสอบรหัสที่สำคัญ
-    codes_found = 0
-    for doc in docs[:10]:  # ตรวจ 10 อันแรก
-        if "Searchable Codes:" in doc.page_content:
-            codes_found += 1
-    
-    print(f"\n📊 Statistics:")
-    print(f"   - Total documents: {len(docs)}")
-    print(f"   - Documents with codes: {codes_found}/10 (sample)")
-    print(f"   - Average length: {sum(len(d.page_content) for d in docs) / len(docs):.0f} chars")
-    
-    return True
+    return documents
 
 # ============================================================================
-# Main Ingestion
+# INGESTION PIPELINE
 # ============================================================================
-def run_ingestion():
+def ingest_to_pgvector():
+    
     print("="*60)
-    print("🚀 Starting Data Ingestion Process")
+    print("เริ่มต้น Ingestion Process")
     print("="*60)
     
-    excel_file = "data/data_inventory.xlsx" 
+    print("\n1. กำลังโหลดข้อมูลจาก Excel...")
+    all_docs: List[Document] = []
     
-    # ตรวจสอบไฟล์
-    if not os.path.exists(excel_file):
-        print(f"❌ File not found: {excel_file}")
-        return
-    
-    target_sheets = [
-        ("Spare", "อะไหล่สำรอง"), 
-        ("Obsolete", "สินค้าเลิกใช้งาน/เสื่อมสภาพ")
-    ]
-    
-    print(f"\n📂 Reading from: {excel_file}")
-    print(f"📊 Target sheets: {[s[0] for s in target_sheets]}\n")
-    
-    # อ่านข้อมูล
-    all_docs = []
-    for sheet, label in target_sheets:
-        docs = process_sheet(excel_file, sheet, label)
+    for sheet, label in TARGET_SHEETS:
+        docs = load_documents_from_sheet(EXCEL_FILE, sheet, label)
         all_docs.extend(docs)
-
+    
     if not all_docs:
-        print("\n❌ No valid documents found!")
-        return
-
-    print(f"\n{'='*60}")
-    print(f"📦 Total Documents: {len(all_docs)}")
-    print(f"{'='*60}\n")
-    
-    # ตรวจสอบคุณภาพ
-    if not verify_documents(all_docs):
-        print("❌ Document verification failed!")
+        print("ไม่พบข้อมูลที่ valid")
         return
     
-    # แบ่งเอกสาร
-    print("\n✂️ Splitting documents into chunks...")
+    print(f"\n✓ รวมทั้งหมด: {len(all_docs)} documents")
+    
+    # แสดงตัวอย่าง document แรก
+    print("\n2. ตัวอย่างเนื้อหา document แรก:")
+    print("-"*60)
+    print(all_docs[0].page_content[:500])
+    print("-"*60)
+    
+    # ---- Split documents (เปลี่ยนเป็น chunk ขนาดใหญ่ขึ้น)
+    print("\n3. กำลัง split documents...")
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=600,        # เพิ่มขนาด chunk
-        chunk_overlap=150,     # เพิ่ม overlap
+        chunk_size=1200,       # เพิ่มเป็น 1200 เพื่อเก็บข้อมูลทั้งหมดของแต่ละรายการ
+        chunk_overlap=200,     # overlap มากขึ้นเพื่อไม่ตัดข้อมูลสำคัญ
         separators=[
-            "=== Category:",
-            "\n## ",
-            "\n\n",
-            "\n",
-            " "
-        ],
-        length_function=len,
+    "\n\n## ",
+    "\n\n",
+    "\n",
+    ". ",
+    " ",
+],
+
     )
     
     chunks = splitter.split_documents(all_docs)
-    print(f"✅ Created {len(chunks)} chunks")
+    print(f"✓ สร้าง {len(chunks)} chunks")
     
     # แสดงตัวอย่าง chunk
-    if chunks:
-        print(f"\n📄 Sample Chunk:")
-        print(f"{chunks[0].page_content[:300]}...")
+    print("\nตัวอย่าง chunk แรก:")
+    print("-"*60)
+    print(chunks[0].page_content[:400])
+    print("-"*60)
     
-    # บันทึกลงฐานข้อมูล
-    try:
-        print(f"\n{'='*60}")
-        print("🗄️ Storing in Vector Database...")
-        print(f"{'='*60}\n")
-        
-        embeds = OllamaEmbeddings(
-            model=EMBED_MODEL, 
-            base_url=OLLAMA_BASE_URL
-        )
-        
-        print("⏳ This may take a few minutes...")
-        
-        PGVector.from_documents(
-            embedding=embeds,
-            documents=chunks,
-            collection_name=COLLECTION,
-            connection_string=DB_URL,
-            pre_delete_collection=True,
-            use_jsonb=True
-        )
-        
-        print(f"\n{'='*60}")
-        print("✅ INGESTION COMPLETED SUCCESSFULLY!")
-        print(f"{'='*60}")
-        print(f"📊 Collection: {COLLECTION}")
-        print(f"📦 Total chunks: {len(chunks)}")
-        print(f"🎯 Ready for queries!")
-        print(f"{'='*60}\n")
-        
-    except Exception as e:
-        print(f"\n{'='*60}")
-        print(f"❌ DATABASE ERROR")
-        print(f"{'='*60}")
-        print(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
+    del all_docs
+    gc.collect()
+    
+    # ---- Embedding + Store
+    print("\n4. กำลังสร้าง embeddings และเขียนลง PGVector...")
+    
+    embeddings = OllamaEmbeddings(
+        model=EMBED_MODEL,
+        base_url=OLLAMA_BASE_URL,
+    )
+    
+    print(f"   Collection: {COLLECTION}")
+    print("   กำลังลบ collection เก่า (ถ้ามี)...")
+    
+    PGVector.from_documents(
+        documents=chunks,
+        embedding=embeddings,
+        collection_name=COLLECTION,
+        connection_string=DB_URL,
+        pre_delete_collection=True,  # ลบของเก่าก่อน
+    )
+    
+    print("\n" + "="*60)
+    print("✓ Ingestion สำเร็จ!")
+    print("="*60)
+    print(f"Collection: {COLLECTION}")
+    print(f"จำนวน chunks: {len(chunks)}")
+    print(f"ขนาด chunk: 800 characters")
+    print("="*60)
 
+# ============================================================================
+# ENTRY POINT
+# ============================================================================
 if __name__ == "__main__":
-    run_ingestion()
+    ingest_to_pgvector()
