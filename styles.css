@@ -8,30 +8,27 @@
     background-color: #0e1117 !important;
 }
 
-/* ปรับแต่ง Message Bubble ใหม่ให้สีตัวอักษรชัดเจน */
+
 [data-testid="stChatMessage"] {
-    background-color: #f7f9fc !important; /* สีเทาฟ้าอ่อนๆ */
+    background-color: #f7f9fc !important;
     border-radius: 15px !important;
     margin-bottom: 15px !important;
     padding: 20px !important;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
 }
 
-/* ข้อความฝั่ง User: พื้นหลังขาว ตัวหนังสือดำเข้ม */
 [data-testid="stChatMessage"]:nth-child(odd) {
     background-color: #ffffff !important;
     border: 1px solid #d1d5db !important;
     color: #1f2937 !important;
 }
 
-/* ข้อความฝั่ง AI: พื้นหลังสีอ่อนตัดด้วยขอบฟ้า ตัวหนังสือดำเข้ม */
 [data-testid="stChatMessage"]:nth-child(even) {
     background-color: #eef2ff !important;
     border: 1px solid #c7d2fe !important;
     color: #1f2937 !important;
 }
 
-/* บังคับให้สีฟอนต์ใน Markdown เป็นสีดำเข้มทั้งหมดเพื่อกันฟอนต์จาง */
 [data-testid="stChatMessage"] .stMarkdown p, 
 [data-testid="stChatMessage"] .stMarkdown li {
     color: #111827 !important;
@@ -39,14 +36,12 @@
     line-height: 1.6 !important;
 }
 
-/* ปรับแต่งช่อง Input ด้านล่างให้เด่นชัด */
 [data-testid="stChatInput"] {
     background-color: #ffffff !important;
     border: 2px solid #3b82f6 !important;
     border-radius: 12px !important;
 }
 
-/* ปรับแต่งปุ่มใน Sidebar ให้มองเห็นง่ายขึ้น */
 button[kind="secondary"] {
     background-color: #262730 !important;
     color: white !important;
@@ -65,4 +60,24 @@ button[kind="secondary"]:hover {
 .stApp {
     background-color: #ffffff !important;
     color: #1e1e1e !important;
+}
+div[data-testid="stPopover"] > button {
+    border: none !important;
+    background-color: transparent !important;
+    padding: 0px !important;
+    margin-top: 5px !important;
+    color: #888 !important;
+}
+
+div[data-testid="stPopover"] > button:hover {
+    color: #FF4B4B !important;
+}
+
+div[data-role="stColumn"] {
+    display: flex;
+    align-items: center;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"] {
+    margin-bottom: 5px !important;
 }

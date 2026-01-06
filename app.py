@@ -30,6 +30,27 @@ def save_all_sessions(sessions):
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(sessions, f, ensure_ascii=False, indent=4)
 
+def delete_session(session_id):
+    """ลบ session ออกจากรายการและไฟล์ JSON"""
+    # 1. ลบออกจากรายการใน session_state
+    st.session_state.all_sessions = [s for s in st.session_state.all_sessions if s['id'] != session_id]
+    # 2. บันทึกทับลงไฟล์ JSON
+    save_all_sessions(st.session_state.all_sessions)
+    # 3. ถ้าลบแชทที่กำลังคุยอยู่ ให้รีเซ็ตหน้าจอใหม่
+    if st.session_state.user_id == session_id:
+        st.session_state.user_id = f"session_{int(time.time())}"
+        st.session_state.chat_history = []
+    st.rerun()
+
+def rename_session(session_id, new_name):
+    """เปลี่ยนชื่อ session ในรายการและบันทึกลงไฟล์ JSON"""
+    for session in st.session_state.all_sessions:
+        if session['id'] == session_id:
+            session['title'] = new_name
+            break
+    save_all_sessions(st.session_state.all_sessions)
+    st.rerun()
+
 # =====================================================================
 # 🖥️ 2. Page Config & CSS
 # =====================================================================
@@ -109,11 +130,9 @@ if "stop_generating" not in st.session_state:
 # =====================================================================
 with st.sidebar:
     st.markdown("## 🛠️ เมนู")
-    
-    if st.button("➕ เริ่มแชทใหม่ (New Chat)", use_container_width=True, type="primary"):
+    if st.button("➕ เริ่มแชทใหม่", use_container_width=True, type="primary"):
         st.session_state.user_id = f"session_{int(time.time())}"
         st.session_state.chat_history = []
-        st.session_state.is_generating = False
         st.rerun()
 
     st.markdown("---")
@@ -123,16 +142,23 @@ with st.sidebar:
         st.caption("ยังไม่มีประวัติการสนทนา")
     else:
         for chat in st.session_state.all_sessions:
-            # ตรวจสอบว่าเป็นแชทที่เลือกอยู่หรือไม่
-            is_active = chat['id'] == st.session_state.user_id
-            label = f"💬 {chat['title']}"
-            if st.button(label, key=f"hist_{chat['id']}", use_container_width=True):
-                st.session_state.user_id = chat['id']
-                db = get_session_history(chat['id'])
-                st.session_state.chat_history = db.messages
-                st.rerun()
-
-    st.markdown("---")
+            # ใช้ columns แยกปุ่มกดอ่าน กับ ปุ่มลบ ออกจากกัน
+            col_content, col_delete = st.columns([0.85, 0.15])
+            
+            with col_content:
+                # ตรวจสอบว่าเป็นแชทปัจจุบันหรือไม่ เพื่อเปลี่ยนสีปุ่มให้รู้ว่าเปิดอยู่
+                is_active = chat['id'] == st.session_state.user_id
+                btn_type = "primary" if is_active else "secondary"
+                
+                if st.button(f"💬 {chat['title']}", key=f"read_{chat['id']}", use_container_width=True, type=btn_type):
+                    st.session_state.user_id = chat['id']
+                    db = get_session_history(chat['id'])
+                    st.session_state.chat_history = db.messages
+                    st.rerun()
+            
+            with col_delete:
+                if st.button("🗑️", key=f"del_{chat['id']}", help="ลบแชทนี้", use_container_width=True):
+                    delete_session(chat['id'])
     st.markdown("### 💡 คำถามตัวอย่าง")
     example_questions = ["Serial CN43KR3017 คืออะไร?", "มี ThinkPad กี่เครื่อง?", "อุปกรณ์ Spare มีอะไรบ้าง?"]
     for q in example_questions:
@@ -142,9 +168,6 @@ with st.sidebar:
 # =====================================================================
 # 💬 5. Chat Area & Input
 # =====================================================================
-st.markdown("<h1 style='text-align: center;'>🖥️ AI IT Support Assistant</h1>", unsafe_allow_html=True)
-st.markdown("---")
-
 chat_container = st.container()
 
 with chat_container:
@@ -155,12 +178,6 @@ with chat_container:
         role = "user" if isinstance(msg, HumanMessage) else "assistant"
         with st.chat_message(role, avatar="👤" if role == "user" else "🤖"):
             st.markdown(msg.content)
-
-# ปุ่ม Stop
-if st.session_state.is_generating:
-    if st.button("⏹️ หยุดการตอบ (Stop)", use_container_width=True):
-        st.session_state.stop_generating = True
-        st.rerun()
 
 # จัดการ Input
 if "selected_question" in st.session_state and not st.session_state.is_generating:
@@ -206,6 +223,3 @@ if prompt:
     finally:
         st.session_state.is_generating = False
         st.rerun()
-
-st.markdown("---")
-st.markdown("<div style='text-align: center; color: #95a5a6;'>🔒 ข้อมูลปลอดภัย | Powered by AI & RAG</div>", unsafe_allow_html=True)

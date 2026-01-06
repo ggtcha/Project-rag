@@ -1,15 +1,17 @@
-from typing import Generator
+from typing import Generator, List
 import os
 import re
 from dotenv import load_dotenv
 from functools import lru_cache
 from datetime import datetime
+import psycopg2
 
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_community.vectorstores import PGVector
 from langchain_community.chat_message_histories import PostgresChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
+from langchain_core.documents import Document
 
 load_dotenv()
 
@@ -50,6 +52,7 @@ _embeddings = None
 _vectorstore = None
 _retriever = None
 _llm = None
+_db_conn = None
 
 # ============================================================================
 # Core Functions
@@ -80,7 +83,7 @@ def get_retriever():
         _retriever = get_vectorstore().as_retriever(
             search_type="similarity",
             search_kwargs={
-                "k":50,  # เพิ่มเป็น 7 เพื่อหาข้อมูลได้หลากหลาย
+                "k": 30,  # เพิ่มขึ้นเพื่อให้แน่ใจว่าได้ข้อมูล
             }
         )
     return _retriever
@@ -90,60 +93,207 @@ def get_llm():
     if _llm is None:
         _llm = ChatOllama(
             model=LLM_MODEL,
-            temperature=0.0,
+            temperature=0.1,
             stream=True,
             base_url=OLLAMA_BASE_URL,
-            num_ctx=4096,
-            num_predict=1024
+            num_ctx=8192,
+            num_predict=2048
         )
     return _llm
 
+def get_db_connection():
+    """สร้างการเชื่อมต่อ PostgreSQL โดยตรง"""
+    global _db_conn
+    if _db_conn is None or _db_conn.closed:
+        _db_conn = psycopg2.connect(PSYCOPG_CONN_INFO)
+    return _db_conn
+
 # ============================================================================
-# Prompts
+# Keyword Extraction
+# ============================================================================
+
+def extract_search_patterns(question: str) -> dict:
+    """ดึงคำค้นหาที่เป็น Serial, Asset, Model จากคำถาม"""
+    
+    patterns = {
+        "serials": [],
+        "assets": [],
+        "models": [],
+        "locations": [],
+        "keywords": []
+    }
+    
+    # หา Serial Number (8+ ตัวอักษร ตัวพิมพ์ใหญ่และตัวเลข)
+    serials = re.findall(r'\b[a-zA-Z0-9-]{4,20}\b', question)
+    patterns["serials"].extend([s.upper() for s in serials])
+    
+    # หา Asset Number (7-8 หลัก)
+    assets = re.findall(r'\b\d{7,10}\b', question)
+    patterns["assets"].extend(assets)
+    
+    # หา Model keywords
+    model_keywords = ["thinkpad", "thinkcentre", "thinkstation", "switch", 
+                      "router", "printer", "mac", "elitebook", "optiplex",
+                      "g100", "6100", "neverstop"]
+    
+    q_lower = question.lower()
+    for mk in model_keywords:
+        if mk in q_lower:
+            patterns["models"].append(mk)
+    
+    # หา Location keywords
+    location_keywords = ["sriracha", "ศรีราชา", "chonburi", "ชลบุรี", 
+                         "custom", "customs"]
+    
+    for lk in location_keywords:
+        if lk in q_lower:
+            patterns["locations"].append(lk)
+    
+    # General keywords
+    if any(k in q_lower for k in ["spare", "พร้อมใช้", "สำรอง"]):
+        patterns["keywords"].append("spare")
+    
+    if any(k in q_lower for k in ["obsolete", "เลิกใช้", "เสื่อม"]):
+        patterns["keywords"].append("obsolete")
+    
+    return patterns
+
+# ============================================================================
+# Hybrid Retrieval - ส่วนสำคัญที่สุด!
+# ============================================================================
+def keyword_search_direct(patterns: dict) -> List[Document]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    all_docs = []
+
+    search_terms = patterns["serials"] + patterns["assets"] + patterns["models"]
+    
+    try:
+        for term in search_terms:
+            query = """
+            SELECT document, cmetadata
+                FROM langchain_pg_embedding
+                WHERE document ILIKE %s 
+                   OR (cmetadata->>'Serial')::text ILIKE %s
+                   OR (cmetadata->>'Asset No')::text ILIKE %s
+                   OR (cmetadata->>'Model No.')::text ILIKE %s
+                LIMIT 15 -- เพิ่มขีดจำกัดเพื่อให้ได้ข้อมูลที่เกี่ยวข้องครบถ้วน
+            """
+            cursor.execute(query, (f'%{term}%', f'%{term}%', f'%{term}%', f'%{term}%'))
+            results = cursor.fetchall()
+            
+            print(f"[KEYWORD SEARCH] Term '{term}' found {len(results)} results")
+            
+            for doc_content, metadata in results:
+                all_docs.append(
+                    Document(
+                        page_content=doc_content,
+                        metadata=metadata or {}
+                    )
+                )
+        
+    except Exception as e:
+        print(f"[KEYWORD SEARCH ERROR] {e}")
+    finally:
+        cursor.close()
+    
+    return all_docs
+
+def hybrid_retrieve(question: str) -> List[Document]:
+    """รวม Semantic Search + Keyword Search"""
+    
+    print(f"\n[HYBRID RETRIEVAL] Question: {question}")
+
+    retriever = get_retriever()
+    semantic_docs = retriever.invoke(question)
+    print(f"[SEMANTIC SEARCH] Found {len(semantic_docs)} docs")
+    
+    # 2. Keyword Search (ใหม่)
+    patterns = extract_search_patterns(question)
+    print(f"[PATTERNS] {patterns}")
+    
+    keyword_docs = []
+    if any(patterns.values()):
+        keyword_docs = keyword_search_direct(patterns)
+        print(f"[KEYWORD SEARCH] Found {len(keyword_docs)} docs")
+    
+    # 3. รวมผลลัพธ์ (ให้ความสำคัญกับ keyword search มากกว่า)
+    all_docs = keyword_docs + semantic_docs
+    
+    # ลบซ้ำ (ตาม page_content)
+    seen = set()
+    unique_docs = []
+    
+    for doc in all_docs:
+        content_hash = hash(doc.page_content[:200])  # ใช้ 200 ตัวอักษรแรก
+        if content_hash not in seen:
+            seen.add(content_hash)
+            unique_docs.append(doc)
+    
+    print(f"[HYBRID RESULT] Total unique docs: {len(unique_docs)}")
+    
+    # จำกัดที่ 15 รายการ
+    return unique_docs[:30]
+
+# ============================================================================
+# Enhanced Prompts
 # ============================================================================
 
 IT_ASSET_PROMPT = ChatPromptTemplate.from_template("""
-คุณคือ AI IT Support Assistant ที่เชี่ยวชาญในการจัดการ IT 
+คุณคือ AI IT Support Assistant ที่เชี่ยวชาญในการจัดการ IT Asset
 
-ความสามารถของคุณ:
-✅ ค้นหาข้อมูล Asset จาก Serial Number, Model, Asset Number
-✅ ตรวจสอบสถานะและตำแหน่งของอุปกรณ์
-✅ บอกรายละเอียดสเปค อายุการใช้งาน วันที่จัดซื้อ
-✅ แยกประเภทอุปกรณ์ (Laptop, Desktop, Router, Switch, etc.)
-✅ นับจำนวนอุปกรณ์ตามเงื่อนไขต่างๆ
-
-กฎการตอบคำถาม:
-1. ตอบจากข้อมูลใน CONTEXT เท่านั้น - ห้ามเดา ห้ามสมมติ
-2. ถ้าคำถามถามหา Serial/Asset ที่ระบุชัดเจน ให้ตอบรายละเอียดครบถ้วน
-3. ถ้าถามนับจำนวน ให้ตอบตัวเลขชัดเจน และระบุรายการถ้าไม่เยอะ
-4. ถ้าถามตำแหน่ง ให้ตอบ Location ชัดเจน
-5. ถ้าไม่มีข้อมูล ให้ตอบว่า "ไม่พบข้อมูลในระบบ"
-6. จัดรูปแบบคำตอบให้อ่านง่าย ใช้ bullet points หรือตารางถ้าเหมาะสม
-
-วันที่ปัจจุบัน: {current_date}
-
-CONTEXT จากฐานข้อมูล:
+## ข้อมูลจากระบบ:
 {context}
 
-คำถามจากผู้ใช้:
+## วันที่ปัจจุบัน: {current_date}
+
+## คำถาม:
 {question}
 
-คำตอบ (ภาษาไทย ชัดเจน เป็นระเบียบ):
+## วิธีการตอบ:
+1. **อ่านข้อมูลทั้งหมดอย่างละเอียด** - ตรวจสอบทุกรายการ
+2. **ตอบตามความจริงเท่านั้น** - อย่าเดา อย่าแต่งเติม
+3. **จัดรูปแบบให้อ่านง่าย** - ใช้ emoji, bullet points, หัวข้อชัดเจน
+4. **ถ้ามีหลายรายการ** - แสดงทั้งหมดหรืออย่างน้อย 5 รายการแรก
+5. **ถ้าไม่เจอ** - บอกตรงๆว่า "ไม่พบข้อมูล"
+
+## ตัวอย่างคำตอบที่ดี:
+
+**ถามหา Serial:**
+```
+🔍 พบข้อมูล Serial TW37KNP21D
+
+📦 รุ่น: 6100 12G Class4 PoE 2G/2SF+ 139W Switch
+🔢 Model No: HPE-JL679A
+🏷️ Serial: TW37KNP21D
+💼 Asset No: 10029034
+✅ สถานะ: Spare (พร้อมใช้งาน)
+📍 ตำแหน่ง: Sriracha
+```
+
+**ถามนับจำนวน:**
+```
+📊 มี ThinkPad ทั้งหมด 12 เครื่อง
+
+รายละเอียด:
+✅ Spare: 4 เครื่อง
+⚠️ Obsolete: 8 เครื่อง
+
+รายการ Spare:
+1. T480 - S/N: ABC123 - Asset: 10001234
+2. T490 - S/N: DEF456 - Asset: 10001235
+...
+```
+
+คำตอบ:
 """)
 
 GENERAL_PROMPT = ChatPromptTemplate.from_template("""
-คุณคือ AI IT Support Assistant ที่เป็นมิตรและช่วยเหลือ
+คุณคือ AI IT Support Assistant ที่เป็นมิตร
 
-คุณสามารถ:
-- ตอบคำถามทั่วไปเกี่ยวกับไอที
-- ให้คำแนะนำการแก้ปัญหาเบื้องต้น
-- อธิบายเทคโนโลยีและแนวคิดต่างๆ
-- สนทนาเป็นกันเอง
+วันที่: {current_date}
 
-วันที่ปัจจุบัน: {current_date}
-
-คำถาม:
-{question}
+คำถาม: {question}
 
 คำตอบ (ภาษาไทย เป็นกันเอง):
 """)
@@ -164,80 +314,66 @@ def get_session_history(session_id: str):
 # ============================================================================
 
 IT_ASSET_KEYWORDS = [
-    # Asset & Serial
-    "serial", "s/n", "asset", "รหัสทรัพย์สิน", "หมายเลขทรัพย์สิน",
-    "ซีเรียล", "เลขทรัพย์สิน","serial number","Serialnumber","serialnumber",
-    "Serial"
-    
-    # Device Types
-    "thinkpad", "laptop", "notebook", "computer", "คอม", "เครื่อง",
-    "desktop", "workstation", "mac mini",
-    "switch", "router", "access point", "wifi",
-    "printer", "เครื่องพิมพ์",
-    
-    # Locations
-    "ตำแหน่ง", "location", "อยู่ที่", "สถานที่", "ที่ไหน", "where",
-    "sriracha", "ศรีราชา", "chonburi", "ชลบุรี",
-    "custom server room", "customs building", "kp 4.0",
-    
-    # Status & Condition
-    "สถานะ", "status", "spare", "obsolete", 
-    "พร้อมใช้", "available", "เลิกใช้", "เสื่อม",
-    "deployable", "deployed",
-    
-    # Queries
-    "มี", "เหลือ", "กี่", "จำนวน", "how many", "count",
-    "ค้นหา", "หา", "search", "find", "ตรวจสอบ", "check",
-    "รุ่น", "model", "รายการ", "list",
-    
-    # Purchase & Order
-    "จัดซื้อ", "purchased", "order", "po", "ใบสั่งซื้อ",
+    "serial", "s/n", "sn", "asset", "model", "รุ่น", "เครื่อง", "อุปกรณ์",
+    "มี", "เหลือ", "กี่", "จำนวน", "spare", "obsolete", "ค้นหา", "หา",
+    "thinkpad", "laptop", "switch", "router", "printer", "computer",
+    "location", "ตำแหน่ง", "อยู่ที่", "sriracha", "ศรีราชา", "Model No" ,
+    "model no", "asset no", "asset no.", "serial number"
 ]
 
-# Pattern สำหรับ Serial, Asset, Order Number
-SERIAL_PATTERN = r"[A-Z0-9]{8,}"
-ASSET_PATTERN = r"\d{7,8}"
-ORDER_PATTERN = r"\d{9,}"
-
 def classify_intent(question: str) -> str:
-    """จำแนกประเภทคำถาม"""
+    q_lower = question.lower()
     
-    q = question.lower()
-    
-    # เช็ค keywords
-    if any(k in q for k in IT_ASSET_KEYWORDS):
+    # มี Serial/Asset pattern = แน่นอนว่าเป็น IT Asset
+    if re.search(r'[A-Z0-9]{7,}', question):
         return "it_asset"
     
-    # เช็ค patterns
-    if re.search(SERIAL_PATTERN, question):
-        return "it_asset"
-    
-    if re.search(ASSET_PATTERN, question):
-        return "it_asset"
-    
-    if re.search(ORDER_PATTERN, question):
+    # มี keywords
+    if any(k in q_lower for k in IT_ASSET_KEYWORDS):
         return "it_asset"
     
     return "general"
 
 # ============================================================================
-# Context Processing
+# Context Formatting
 # ============================================================================
-def compress_context(docs, max_chars: int = 15000) -> str:
+# แก้ไขฟังก์ชัน format_context_for_llm
+def format_context_for_llm(docs, max_docs: int = 20) -> str:
     if not docs:
-        return ""
+        return "ไม่พบข้อมูล"
     
-    text = ""
+    docs = docs[:max_docs]
+    parts = [f"พบข้อมูล {len(docs)} รายการที่เกี่ยวข้อง", ""]
+    
     for i, doc in enumerate(docs, 1):
-        doc_text = f"[รายการที่ {i}]\n{doc.page_content.strip()}\n\n"
+        meta = doc.metadata
         
-        if len(text) + len(doc_text) > max_chars:
-            break
-        
-        text += doc_text
-    
-    return text.strip()
+        # ฟังก์ชันช่วยดึงค่าแบบ Case-insensitive และรองรับหลายชื่อเรียก
+        def get_val(keys_list):
+            low_meta = {k.lower(): v for k, v in meta.items()}
+            for k in keys_list:
+                if k in meta: return meta[k]
+                if k.lower() in low_meta: return low_meta[k.lower()]
+            return "N/A"
 
+        # ดึงข้อมูลให้ครบตามหัวตาราง Excel
+        model_name = get_val(['model', 'Model Name'])
+        model_no = get_val(['model no.', 'model no', 'model_no'])
+        serial = get_val(['serial', 'serial number', 's/n'])
+        asset = get_val(['asset no', 'asset no.', 'asset_no'])
+        status = get_val(['status'])
+        location = get_val(['location', 'locations'])
+
+        parts.append(f"### รายการที่ {i}:")
+        parts.append(f"- รุ่น: {model_name} (Model No: {model_no})")
+        parts.append(f"- Serial: {serial}")
+        parts.append(f"- Asset No: {asset}")
+        parts.append(f"- สถานะ: {status}")
+        parts.append(f"- ตำแหน่ง: {location}")
+        parts.append(f"รายละเอียดเพิ่มเติม: {doc.page_content}")
+        parts.append("-" * 30)
+    
+    return "\n".join(parts)
 # ============================================================================
 # Main Chat Function
 # ============================================================================
@@ -247,54 +383,36 @@ def chat_with_warehouse_system(
     question: str,
     image: bytes | None = None
 ) -> Generator[str, None, None]:
-    """ฟังก์ชันหลักสำหรับตอบคำถาม"""
+    """ฟังก์ชันหลัก"""
     
     llm = get_llm()
     history = get_session_history(session_id)
-    
-    # จำแนกความตั้งใจ
-    intent = classify_intent(question)
-    
-    # วันที่ปัจจุบัน
     current_date = datetime.now().strftime("%Y-%m-%d")
     
-    # =========================
-    # STEP 1: Retrieval
-    # =========================
-    docs = []
-    context = ""
+    intent = classify_intent(question)
+    print(f"\n[INTENT] {intent}")
     
+    # IT ASSET MODE
     if intent == "it_asset":
-        retriever = get_retriever()
-        try:
-            docs = retriever.invoke(question)
-            context = compress_context(docs) if docs else ""
-            
-            # Debug
-            print(f"[DEBUG] Found {len(docs)} documents")
-            if docs:
-                print(f"[DEBUG] Top doc score: {docs[0].metadata.get('score', 'N/A')}")
-                
-        except Exception as e:
-            print(f"[DEBUG] Retrieval error: {e}")
-            docs = []
-            context = ""
-    
-    # =========================
-    # STEP 2: Choose Mode
-    # =========================
-    use_rag = bool(context and len(context) > 50)
-    
-    # =========================
-    # GENERAL MODE
-    # =========================
-    if not use_rag:
+        # ใช้ Hybrid Retrieval
+        docs = hybrid_retrieve(question)
+        
+        if not docs:
+            yield "🔍 ไม่พบข้อมูลในระบบ\n\n"
+            yield "💡 ลองตรวจสอบ:\n"
+            yield "• Serial Number ถูกต้องหรือไม่\n"
+            yield "• ค้นหาด้วย Model หรือ Asset Number\n"
+            return
+        
+        context = format_context_for_llm(docs)
+        
         chain = (
             {
+                "context": lambda _: context,
                 "question": RunnablePassthrough(),
                 "current_date": lambda _: current_date
             }
-            | GENERAL_PROMPT
+            | IT_ASSET_PROMPT
             | llm
         )
         
@@ -308,16 +426,13 @@ def chat_with_warehouse_system(
         history.add_ai_message(full_response)
         return
     
-    # =========================
-    # IT ASSET MODE (RAG)
-    # =========================
+    # GENERAL MODE
     chain = (
         {
-            "context": lambda _: context,
             "question": RunnablePassthrough(),
             "current_date": lambda _: current_date
         }
-        | IT_ASSET_PROMPT
+        | GENERAL_PROMPT
         | llm
     )
     
@@ -335,16 +450,17 @@ def chat_with_warehouse_system(
 # ============================================================================
 
 def clear_session_history(session_id: str):
-    """ล้างประวัติการสนทนา"""
     history = get_session_history(session_id)
     history.clear()
     get_session_history.cache_clear()
 
 def cleanup_resources():
-    """ปิดและล้าง resources"""
-    global _vectorstore, _embeddings, _llm, _retriever
+    global _vectorstore, _embeddings, _llm, _retriever, _db_conn
+    if _db_conn and not _db_conn.closed:
+        _db_conn.close()
     _vectorstore = None
     _embeddings = None
     _llm = None
     _retriever = None
+    _db_conn = None
     get_session_history.cache_clear()
