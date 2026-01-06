@@ -1,83 +1,267 @@
-/* ล้างค่าเก่าและกำหนดพื้นหลังหลัก */
+/* ========================================
+   🎨 Minimal IT Support Assistant Theme
+   สีหลัก: ขาว, เทา, ส้ม, ครีม
+======================================== */
+
+/* พื้นหลังหลักของแอป */
 [data-testid="stAppViewContainer"] {
-    background-color: #f0f2f6 !important;
+    background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%) !important;
 }
 
-/* แก้ไข Sidebar ให้สีเข้มตัดกับปุ่ม */
+/* ===== SIDEBAR ===== */
 [data-testid="stSidebar"] {
-    background-color: #0e1117 !important;
+    background: linear-gradient(180deg, #2d2d2d 0%, #1a1a1a 100%) !important;
+    border-right: 1px solid #3d3d3d !important;
 }
 
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {
+    color: #ffffff !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.3px !important;
+}
 
+[data-testid="stSidebar"] .stMarkdown p {
+    color: #e0e0e0 !important;
+}
+
+[data-testid="stSidebar"] hr {
+    border-color: #404040 !important;
+    margin: 1.5rem 0 !important;
+}
+
+/* ปุ่มใน Sidebar */
+[data-testid="stSidebar"] button[kind="primary"] {
+    background: linear-gradient(135deg, #ff8a50 0%, #ff6b35 100%) !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 0.6rem 1.2rem !important;
+    font-weight: 500 !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 2px 8px rgba(255, 107, 53, 0.2) !important;
+}
+
+[data-testid="stSidebar"] button[kind="primary"]:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3) !important;
+}
+
+[data-testid="stSidebar"] button[kind="secondary"] {
+    background-color: #2d2d2d !important;
+    color: #e0e0e0 !important;
+    border: 1px solid #404040 !important;
+    border-radius: 8px !important;
+    padding: 0.6rem 1rem !important;
+    transition: all 0.2s ease !important;
+}
+
+[data-testid="stSidebar"] button[kind="secondary"]:hover {
+    background-color: #353535 !important;
+    border-color: #ff8a50 !important;
+    color: #ff8a50 !important;
+}
+
+/* ปุ่มลบ - Minimal Design */
+[data-testid="stSidebar"] button[aria-label*="ลบ"],
+[data-testid="stSidebar"] button[title*="ลบ"] {
+    background-color: transparent !important;
+    color: #666666 !important;
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 0.5rem !important;
+    transition: all 0.2s ease !important;
+    min-width: auto !important;
+    opacity: 0.5 !important;
+}
+
+[data-testid="stSidebar"] button[aria-label*="ลบ"]:hover,
+[data-testid="stSidebar"] button[title*="ลบ"]:hover {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    color: #ef4444 !important;
+    opacity: 1 !important;
+}
+
+/* ===== CHAT MESSAGES ===== */
 [data-testid="stChatMessage"] {
-    background-color: #f7f9fc !important;
-    border-radius: 15px !important;
-    margin-bottom: 15px !important;
-    padding: 20px !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
-}
-
-[data-testid="stChatMessage"]:nth-child(odd) {
     background-color: #ffffff !important;
-    border: 1px solid #d1d5db !important;
-    color: #1f2937 !important;
+    border-radius: 12px !important;
+    margin-bottom: 1rem !important;
+    padding: 1.5rem !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+    border: 1px solid #e5e5e5 !important;
+    transition: all 0.2s ease !important;
 }
 
-[data-testid="stChatMessage"]:nth-child(even) {
-    background-color: #eef2ff !important;
-    border: 1px solid #c7d2fe !important;
-    color: #1f2937 !important;
+[data-testid="stChatMessage"]:hover {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08) !important;
 }
 
-[data-testid="stChatMessage"] .stMarkdown p, 
+/* ข้อความจาก User */
+[data-testid="stChatMessage"][data-testid*="user"] {
+    background: linear-gradient(135deg, #fff5f0 0%, #ffe8dc 100%) !important;
+    border-left: 3px solid #ff8a50 !important;
+}
+
+/* ข้อความจาก Assistant */
+[data-testid="stChatMessage"][data-testid*="assistant"] {
+    background-color: #fafafa !important;
+    border-left: 3px solid #9e9e9e !important;
+}
+
+/* ตัวหนังสือในข้อความ */
+[data-testid="stChatMessage"] .stMarkdown p,
 [data-testid="stChatMessage"] .stMarkdown li {
-    color: #111827 !important;
-    font-size: 1rem !important;
-    line-height: 1.6 !important;
+    color: #2d2d2d !important;
+    font-size: 0.95rem !important;
+    line-height: 1.7 !important;
+    font-weight: 400 !important;
 }
 
+[data-testid="stChatMessage"] .stMarkdown strong {
+    color: #1a1a1a !important;
+    font-weight: 600 !important;
+}
+
+[data-testid="stChatMessage"] .stMarkdown code {
+    background-color: #f5f5f5 !important;
+    color: #ff6b35 !important;
+    padding: 0.2rem 0.4rem !important;
+    border-radius: 4px !important;
+    font-size: 0.9em !important;
+}
+
+/* ===== CHAT INPUT ===== */
 [data-testid="stChatInput"] {
     background-color: #ffffff !important;
-    border: 2px solid #3b82f6 !important;
+    border: 2px solid #e0e0e0 !important;
     border-radius: 12px !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
 }
 
-button[kind="secondary"] {
-    background-color: #262730 !important;
-    color: white !important;
-    border: 1px solid #4b5563 !important;
+[data-testid="stChatInput"]:focus-within {
+    border-color: #ff8a50 !important;
+    box-shadow: 0 4px 12px rgba(255, 138, 80, 0.15) !important;
 }
 
-button[kind="secondary"]:hover {
-    border-color: #3b82f6 !important;
-    color: #3b82f6 !important;
+[data-testid="stChatInput"] input {
+    color: #2d2d2d !important;
+    font-size: 0.95rem !important;
+}
+
+[data-testid="stChatInput"] input::placeholder {
+    color: #9e9e9e !important;
+}
+
+/* ===== MAIN CONTENT AREA ===== */
+.stApp {
+    background-color: #fafafa !important;
+    color: #2d2d2d !important;
 }
 
 .main {
-    background-color: #ffffff;
+    background-color: transparent !important;
 }
 
-.stApp {
-    background-color: #ffffff !important;
-    color: #1e1e1e !important;
+/* หัวข้อต่างๆ */
+h1, h2, h3 {
+    color: #1a1a1a !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.2px !important;
 }
+
+h1 {
+    font-size: 2rem !important;
+}
+
+h2 {
+    font-size: 1.5rem !important;
+}
+
+h3 {
+    font-size: 1.2rem !important;
+}
+
+/* ===== WELCOME MESSAGE ===== */
+.stApp h3 {
+    color: #2d2d2d !important;
+    font-weight: 400 !important;
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar {
+    width: 8px !important;
+    height: 8px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: #f5f5f5 !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c0c0c0 !important;
+    border-radius: 4px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a0a0a0 !important;
+}
+
+/* Sidebar scrollbar */
+[data-testid="stSidebar"] ::-webkit-scrollbar-track {
+    background: #1a1a1a !important;
+}
+
+[data-testid="stSidebar"] ::-webkit-scrollbar-thumb {
+    background: #404040 !important;
+}
+
+[data-testid="stSidebar"] ::-webkit-scrollbar-thumb:hover {
+    background: #505050 !important;
+}
+
+/* ===== POPOVER (เมนู 3 จุด) ===== */
 div[data-testid="stPopover"] > button {
     border: none !important;
     background-color: transparent !important;
-    padding: 0px !important;
-    margin-top: 5px !important;
-    color: #888 !important;
+    padding: 0.3rem !important;
+    color: #9e9e9e !important;
+    transition: color 0.2s ease !important;
 }
 
 div[data-testid="stPopover"] > button:hover {
-    color: #FF4B4B !important;
+    color: #ff6b35 !important;
+}
+
+/* ===== SPACING & LAYOUT ===== */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    margin-bottom: 0.5rem !important;
 }
 
 div[data-role="stColumn"] {
-    display: flex;
-    align-items: center;
+    display: flex !important;
+    align-items: center !important;
 }
 
-[data-testid="stVerticalBlockBorderWrapper"] {
-    margin-bottom: 5px !important;
+/* ===== CAPTION TEXT ===== */
+.stApp .stCaption {
+    color: #9e9e9e !important;
+    font-size: 0.85rem !important;
+}
+
+/* ===== LOADING INDICATOR ===== */
+.stSpinner > div {
+    border-top-color: #ff8a50 !important;
+}
+
+/* ===== ERROR/WARNING MESSAGES ===== */
+.stAlert {
+    border-radius: 8px !important;
+    border-left-width: 4px !important;
+}
+
+[data-testid="stAlert"][data-baseweb="notification"] {
+    background-color: #fef3f2 !important;
+    border-left-color: #ef4444 !important;
 }

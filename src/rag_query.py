@@ -177,7 +177,7 @@ def keyword_search_direct(patterns: dict) -> List[Document]:
                    OR (cmetadata->>'Serial')::text ILIKE %s
                    OR (cmetadata->>'Asset No')::text ILIKE %s
                    OR (cmetadata->>'Model No.')::text ILIKE %s
-                LIMIT 15 -- เพิ่มขีดจำกัดเพื่อให้ได้ข้อมูลที่เกี่ยวข้องครบถ้วน
+                LIMIT 50 -- เพิ่มขีดจำกัดเพื่อให้ได้ข้อมูลที่เกี่ยวข้องครบถ้วน
             """
             cursor.execute(query, (f'%{term}%', f'%{term}%', f'%{term}%', f'%{term}%'))
             results = cursor.fetchall()
@@ -191,6 +191,7 @@ def keyword_search_direct(patterns: dict) -> List[Document]:
                         metadata=metadata or {}
                     )
                 )
+
         
     except Exception as e:
         print(f"[KEYWORD SEARCH ERROR] {e}")
@@ -338,7 +339,7 @@ def classify_intent(question: str) -> str:
 # Context Formatting
 # ============================================================================
 # แก้ไขฟังก์ชัน format_context_for_llm
-def format_context_for_llm(docs, max_docs: int = 20) -> str:
+def format_context_for_llm(docs, max_docs: int = 50) -> str:
     if not docs:
         return "ไม่พบข้อมูล"
     

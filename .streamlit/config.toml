@@ -1,0 +1,6 @@
+[theme]
+primaryColor = "#D97757"
+backgroundColor = "#F9F6F0"
+secondaryBackgroundColor = "#ECE9E2"
+textColor = "#212121"
+font = "sans serif" # หรือใช้ "serif"
